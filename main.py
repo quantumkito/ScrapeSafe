@@ -5,11 +5,21 @@ import threading
 import string
 import random
 import logging
+import colorama
+from colorama import Fore, Style
+
+colorama.init(autoreset=True)
+LOG_FORMAT = f"{Fore.BLUE}[%(asctime)s]{Style.RESET_ALL} %(levelname)s: %(message)s"
 
 logging.basicConfig(
     level=logging.DEBUG,
-    format="[%(asctime)s] %(levelname)s: %(message)s"
+    format=LOG_FORMAT
 )
+
+logging.info(f"{Fore.GREEN}[+] Everything is working fine.{Style.RESET_ALL}")
+logging.warning(f"{Fore.YELLOW}[!] This is a warning!{Style.RESET_ALL}")
+logging.error(f"{Fore.RED}[X] Something went wrong!{Style.RESET_ALL}")
+
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
