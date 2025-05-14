@@ -16,11 +16,6 @@ logging.basicConfig(
     format=LOG_FORMAT
 )
 
-logging.info(f"{Fore.GREEN}[+] Everything is working fine.{Style.RESET_ALL}")
-logging.warning(f"{Fore.YELLOW}[!] This is a warning!{Style.RESET_ALL}")
-logging.error(f"{Fore.RED}[X] Something went wrong!{Style.RESET_ALL}")
-
-
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
@@ -67,7 +62,28 @@ def user_agent():
         "Connection": "keep-alive"
     }
 
+def check_website(url):
+    try:
+        response = requests.get(url, headers=user_agent())
+
+        if response.status_code == 200:
+            logging.info(f"{Fore.GREEN}[+] Website is reachable: {url}{Style.RESET_ALL}")
+            return True
+        
+        elif response.status_code in [400, 403, 404]:
+            logging.warning(f"{Fore.YELLOW}[!] Client-side issue detected ({response.status_code}): {url}{Style.RESET_ALL}")
+        elif response.status_code >= 500:
+            logging.error(f"{Fore.RED}[X] Server error ({response.status_code}): {url}{Style.RESET_ALL}")
+
+    except RequestException as e:
+        logging.error(f"{Fore.RED}[X] Failed to connect to {url}: {e}{Style.RESET_ALL}")
+    
+    return False
+
 def check_xss(url):
+
+    if not check_website(url):
+        return
     vulnerable = []
 
     for payload in PAYLOADS:
@@ -77,20 +93,19 @@ def check_xss(url):
             response = requests.get(url, params={'search': encoded_payload}, headers=user_agent(), timeout=10)
 
             if payload in response.text:
-                logging.info(f"[+] XSS Vulnerability found at {url} with payload: {payload}")
+                logging.info(f"{Fore.GREEN}[+] XSS Vulnerability found at {url} with payload: {payload}{Style.RESET_ALL}")
                 vulnerable.append(payload)
         
         except RequestException as e:
-            logging.error(f"[!] Error during XSS check on {url}: {e}")
+            logging.error(f"{Fore.RED}[!] Error during XSS check on {url}: {e}{Style.RESET_ALL}")
 
         if vulnerable:
             with open("xss_results.txt", "a") as file:
                 file.write(f"Vulnerable URL: {url}\n")
                 file.write("Payloads: \n" + "\n".join(vulnerable) + "\n\n")
-            logging.info("[+] Results saved to xss_results.txt")
+            logging.info(f"{Fore.GREEN}[+] Results saved to xss_results.txt{Style.RESET_ALL}")
 
-
-
+check_xss("https://monkeytype.com/")
 
 
 
